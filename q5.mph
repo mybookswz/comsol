@@ -1,0 +1,197 @@
+To implement this in COMSOL it is easiest to keep everything dimensionless and choose the following mapping for physical properties in the COMSOL physics interfaces:
+	•	density \rho = 1 (dimensionless)
+	•	dynamic viscosity \mu = \nu = 1/\text{Re} (so the momentum viscous term becomes \nu \nabla^2 \mathbf{u} = \tfrac{1}{\text{Re}}\nabla^2\mathbf{u})
+	•	thermal diffusivity \alpha = 1/(\text{Pr}\cdot\text{Re}). In COMSOL alpha = k/(rho*Cp). If we choose rho = 1 and Cp = 1, then set thermal conductivity k = alpha.
+	•	Buoyancy forcing (Boussinesq) in the vertical (y) momentum equation = \frac{\text{Gr}}{\text{Re}^2}\, T. We’ll implement this as a volume force (fy = Gr/Re^2 * T) in the Laminar Flow interface.
+	•	Temperature BCs: bottom T=1, top T=0, left & right insulated (or vertical walls insulated) per statement — note the problem text said vertical walls are thermally insulated.
+
+⸻
+
+1) Model wizard: choose interfaces
+	1.	Model Wizard → 2D (Cartesian). Click Next.
+	2.	Select Physics: add (a) Laminar Flow (spf) and (b) Heat Transfer in Fluids (ht). (Alternatively you can use Nonisothermal Flow Multiphysics if available, but doing the two and coupling via a volume force is fine.) Click Add.
+	3.	Study: choose Time Dependent. Click Finish.
+
+⸻
+
+2) Geometry
+	•	Create a square unit domain (dimensionless) of side length 1 (because nondim domain is unit square).
+	•	Geometry → Rectangle: Width = 1, Height = 1, Position (0,0). Build.
+
+(Everything is nondimensional so coordinates are 0..1.)
+
+⸻
+
+3) Parameters
+
+In the Global Definitions → Parameters add:
+
+Gr   1e2    # or set later by sweep
+Re   1e3
+Pr   6.9
+nu   1/Re          # kinematic viscosity
+alpha 1/(Pr*Re)   # thermal diffusivity
+rho   1
+Cp    1
+
+COMSOL accepts expressions: set nu = 1/Re and alpha = 1/(Pr*Re).
+
+⸻
+
+4) Physics: Laminar Flow (spf) settings
+	1.	Laminar Flow (spf) → Fluid Properties:
+	•	Density rho = 1
+	•	Dynamic viscosity mu = nu (because rho=1, mu = rho*nu = nu). So set mu = nu.
+	2.	External Forces (Volume Force):
+	•	Add a Volume Force (in domain) with components: fx = 0, fy = Gr/Re^2 * T.
+	•	In COMSOL expression: Gr/(Re^2)*T
+	•	This puts the buoyancy factor into vertical momentum.
+	3.	Initial Values (Laminar flow):
+	•	For the two initial conditions:
+	•	Case (i) initial u = (0,0): set u0 = 0, v0 = 0.
+	•	Case (ii) initial u = (1,1): set u0 = 1, v0 = 1.
+	•	You can change these easily by duplicating study steps or by running two studies with different initial values, or by using Step 1: Time Dependent and then editing initial values before compute.
+	4.	Boundary conditions (velocity):
+	•	No‑slip case: assign Wall (no slip) to all four boundaries (default is no-slip).
+	•	Free‑slip case: assign Slip boundary condition to all walls (or to top and bottom? Problem states free slip boundary conditions — interpret as slip on all walls). In COMSOL, choose Slip boundary condition which enforces u·n=0 and n·(τ·t)=0 (no penetration, zero tangential stress).
+	•	You will run both options: create two study steps or create two separate studies / param sets and switch boundary conditions, or better: keep two separate models or duplicate the model; simplest is run the no‑slip case first, then change BCs to Slip and run again.
+
+⸻
+
+5) Physics: Heat Transfer in Fluids (ht)
+	1.	Material / properties (since we are in nondimensional space choose rho & Cp consistent with Laminar Flow)
+	•	Fluid density = rho (1)
+	•	Heat capacity Cp = Cp (1)
+	•	Thermal conductivity k set so that k/(rho*Cp) = alpha. Since rho=1 and Cp=1 set k = alpha.
+	•	In COMSOL: under Heat Transfer → Fluid Properties, set Density = rho, Heat capacity Cp = Cp, Thermal conductivity = alpha.
+	2.	Equation: default is rho*Cp*(dT/dt + u·∇T) = ∇·(k∇T) + Q. With our choices this becomes dT/dt + u·∇T = alpha ∇² T. But we want 1/(Pr Re) coefficient. Because we defined alpha = 1/(Pr Re), it matches.
+	3.	Boundary conditions for T:
+	•	Bottom wall (y=0): Temperature = 1.
+	•	Top wall (y=1): Temperature = 0.
+	•	Left & right walls: Thermal Insulation (No flux).
+	4.	Initial value for T:
+	•	Set initial T field to something reasonable, e.g. uniform T0 (you can set T0 = 0 or any). The problem statement did not give initial T explicitly here; it only sets BCs. Usually initial T = linear interpolation or uniform 0.5; using T = 0 everywhere with bottom fixed to 1 will develop boundary layer. If the problem asks specifically, set initial T = 0 or T = 0.5. (Choose T0 = 0 or T0 = 0.5.)
+	5.	Coupling: The Laminar Flow Volume Force uses T variable from Heat interface; COMSOL will automatically couple because T is a dependent variable in the model.
+
+⸻
+
+6) Mesh
+	•	Use Physics-Controlled Mesh → Finer or Extra Fine depending on Re/Gr. For higher Re/Gr you must refine closer to walls to capture boundary layers.
+	•	Recommended: start with Finer, then add boundary refinement:
+	•	Add Boundary Layer Mesh on top & bottom (hot & cold walls) with 5–8 layers and a growth rate 1.2, first thickness ~ 0.005 (dimensionless) — tune until results stable.
+	•	Build mesh. Check element size relative to expected boundary layer thickness; refine if needed.
+
+⸻
+
+7) Study & Solver settings
+
+Time dependent study:
+	•	Study → Step 1: Time Dependent: set Times to range(0,1,30) or 0:0.5:30 depending on output cadence you want. Use 0:1:30 to sample at 1 s steps.
+	•	For transient stability: the default BDF solver is good. But for higher Re you may need smaller max time steps and stricter tolerances. Suggested tolerances:
+	•	Relative tolerance: 1e-3 or 1e-4 for accurate flow/heat coupling.
+	•	Time stepping: initial step maybe 0.001, max step 0.5 etc. You can adjust in Solver → Time Dependent settings.
+	•	Run Stationary? No — the equations are transient. But you might run a short stationary solve for velocity with T field steady to get initial guess — optional.
+
+⸻
+
+8) Parameter sweep (Gr, Re, Pr)
+
+You must run many combinations. Use Study → Parametric Sweep or Study → Add Parameter:
+	•	In Study add a Parametric Sweep with parameters:
+	•	Re = 1e3, 1e4, 1e5 (enter as a list)
+	•	Gr = 1e2, 1e4, 1e6 (if you want all combos use nested sweeps or do one outer loop at a time)
+	•	Pr = 6.9 (single value)
+	•	Run each param set. Note: large Re & Gr cases are computationally heavy; consider coarse mesh or 2D solver acceleration first.
+
+⸻
+
+9) Running the two boundary‑condition cases & initial velocities
+	•	Case A (No‑slip): set wall BC = No Slip (default) on all walls. Set initial velocity u0=0,v0=0 (or u0=1,v0=1 for the second initial velocity run), run param sweep.
+	•	Case B (Free‑slip): replace wall BCs by Slip on all walls (in Laminar Flow choose Slip), set initial velocities as above, run sweep.
+	•	You can automate by copying the model and changing boundary conditions, or run separate studies.
+
+⸻
+
+10) Extract & plot results at t = 30 s
+	•	After the time dependent solve, choose dataset for final time t = 30 s.
+	•	Temperature distribution: Results → 2D Plot Group → Surface (plot variable T).
+	•	Velocity field: Results → 2D Plot Group → Arrow or Streamline of u and v. Use Velocity (m/s) or combined magnitude sqrt(u^2+v^2).
+	•	Save images for each parameter set.
+
+⸻
+
+11) Compute Nusselt number on hot wall
+
+Dimensionless Nusselt for your nondimensionalization is: Nu(s) = - \left.\frac{\partial T}{\partial n}\right|_{\text{hot wall}} (since conductivity set to 1).
+
+In COMSOL:
+	1.	Create a Boundary Probe or Derived Values → Boundary Integration.
+	2.	Local Nusselt at a boundary point: expression - (nx*Tx + ny*Ty) where Tx = d(T,x) and Ty = d(T,y) and (nx,ny) is the outward unit normal on that boundary. For the bottom hot wall, outward normal is (0,-1) if domain is standard orientation; but the formula with nx*Tx + ny*Ty handles orientation automatically.
+	3.	To get a profile vs position s along the hot wall:
+	•	Add Results → 1D Plot Group → Line Graph (or Derived Values → Line Integration). Choose the boundary (hot wall), and use expression - (nx*Tnx + ny*Tny) or more simply COMSOL has built-in T.nflux? If not, use -(nx*Tx + ny*Ty).
+	•	For average Nusselt: integrate along hot wall and divide by wall length (1):
+
+Nu_avg = (1/1) * surface_integral( -(nx*Tx + ny*Ty), boundary_hot)
+
+In COMSOL use Derived Values → Boundary Integration, select bottom boundary, expression -(nx*Tx+ny*Ty) and evaluate. It’s already per unit length; divide by 1 (domain length) gives average.
+
+	4.	Plot Nusselt vs x (position) by choosing line integration points or using Derived Values → Line Evaluation along bottom boundary.
+
+⸻
+
+12) Practical tips & stability
+	•	Mesh: boundary layers at high Re/Gr need refinement (thin layers). If results seem non‑physical at high Re/Gr, refine mesh and reduce time step.
+	•	Time stepping: for high Re use smaller max time step (e.g. 0.01–0.05) and tighter tolerances.
+	•	Nonlinear solver: COMSOL handles Navier–Stokes nonlinearity; if convergence problems, start with smaller time steps or use ramping for Gr or Re (param continuation).
+	•	Symmetry: use symmetry if it helps reduce domain; but here full square needed.
+	•	Validation: for low Gr/Re compare with literature solutions for natural convection in a cavity.
+
+⸻
+
+13) Postprocessing & plotting required outputs
+	•	Temperature maps & velocity vectors at t=30 for each (Gr,Re,Pr) & BC type.
+	•	Nusselt profile along hot wall: plot local Nu vs x for each case and overlay.
+	•	Optionally export CSV via Results → Export → Data for use in Python/Matlab.
+
+⸻
+
+14) Automation: generate .mph via script (I can provide)
+
+I can prepare a ModelUtil (Java) script or a LiveLink‑MATLAB script that will:
+	•	create geometry (unit square),
+	•	attach Laminar Flow and Heat interfaces,
+	•	set rho=1, mu=1/Re, k=1/(Pr*Re),
+	•	add buoyancy term fy = Gr/(Re^2)*T,
+	•	assign BCs (you can choose no‑slip or slip via a script flag),
+	•	set initial conditions (u_0 and v_0),
+	•	define param sweep lists for Gr and Re,
+	•	build mesh with boundary layer on top/bottom,
+	•	run time dependent study for t=0..30,
+	•	compute Nusselt boundary integration and save results,
+	•	save .mph file.
+
+If you want that script, tell me:
+	•	Which automation target: Java (ModelUtil) or LiveLink‑MATLAB?
+	•	COMSOL version (if known; the script is almost identical for 5.6 & 6.x).
+	•	Which boundary type you want scripted first (no‑slip or slip).
+	•	The lists for Gr and Re you want automated (I can put the ones you gave: Gr={1e2,1e4,1e6}, Re={1e3,1e4,1e5}).
+
+I will produce the full script you can paste into the COMSOL Java editor or run from MATLAB. (I cannot run it here or deliver the .mph file, but the script will build it on your machine.)
+
+⸻
+
+Example expressions (copy into COMSOL exactly)
+	•	kinematic viscosity: nu = 1/Re
+	•	dynamic viscosity (in Laminar Flow property mu): nu
+	•	thermal conductivity (in Heat physics k): alpha (since rho=1,Cp=1), i.e. 1/(Pr*Re)
+	•	buoyancy (volume force in y): Gr/(Re^2)*T
+	•	local Nusselt (use in Derived Values): -(nx*Tx + ny*Ty)
+(where Tx = d(T,x) and Ty = d(T,y), nx,ny are boundary normal components)
+
+⸻
+
+Final notes & recommended workflow to run locally
+	1.	Build the model once for no‑slip, u0=(0,0), Gr=1e2, Re=1e3, Pr=6.9. Solve to t=30s. Inspect results and Nusselt profile.
+	2.	Increase Gr and Re progressively; refine mesh & reduce time step as necessary.
+	3.	Repeat for initial u0=(1,1).
+	4.	Copy the model, change wall BCs to Slip and repeat the sweeps.
