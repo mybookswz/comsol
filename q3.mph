@@ -1,0 +1,138 @@
+0. Launch & Model Wizard
+	1.	Open COMSOL Multiphysics → Model Wizard.
+	2.	Select Space Dimension: 2D (Cartesian). Click Next.
+	3.	Select Physics: choose Chemical Species Transport → Transport of Diluted Species (tds). Click Add.
+	4.	Study: choose Time Dependent. Click Finish.
+
+⸻
+
+1. Geometry (build one pore, then make 8×9 pattern)
+
+I recommend creating a single pore cell then use the Array (Sequence/Array) operation.
+
+We will use meters. In the Geometry node set Units: m.
+
+Build a single pore cell shape (a square pore with a circular arc inside).
+	•	The “pore structure” description is slightly ambiguous (“square pores with a circular arc of radius r inside”). I’ll assume the pore is represented by a square opening minus an internal circular arc (like a rounded corner). If you want a different shape, adjust the boolean operations.
+
+Steps
+	1.	Rectangle (outer square)
+	•	Right‑click Geometry → Rectangle.
+	•	Width = 8e-5 (0.08 mm)
+	•	Height = 8e-5
+	•	Position x = 0, y = 0 (you’ll move/array later)
+	•	Build Selected.
+	2.	Circle (the circular arc inside)
+	•	Right‑click Geometry → Circle.
+	•	Radius = 1.6e-5 (0.016 mm)
+	•	x0, y0 choose the center so the arc sits where needed inside the square — if the arc is concentric with the square, set center at (4e-5,4e-5) i.e. the square center. If the problem implies arc at a corner, place accordingly. (Common case: circular arc centered at square center).
+	•	Build Selected.
+	3.	Boolean Difference (cut arc out of square to create pore opening)
+	•	Geometry → Booleans and Partitions → Difference
+	•	Select the Rectangle as object to keep, Circle as object to subtract. Click Build Selected.
+	•	Result: pore cell domain shape.
+	4.	Create Array (8 × 9)
+	•	With that pore domain selected, right‑click Geometry → Array (or Form Array / Linear Array depending on version). Use Array with nx = 8, ny = 9.
+	•	Displacement: X spacing = 1e-4 (0.1 mm), Y spacing = 1e-4 (0.1 mm).
+	•	You may need to set the reference origin for array so the entire array fits inside a bounding rectangle.
+	•	Build array. You now have 72 pore shapes.
+	5.	Create background domain (solid matrix)
+	•	Create a large rectangle that encloses the entire array (this will be the material/porous medium). How big? compute array extent: width = (nx-1)*spacing + pore size = (8-1)*1e-4 + 8e-5 = 7e-4 + 8e-5 = 7.8e-4 m = 0.78 mm. Height for 9 rows: (9-1)*1e-4 + 8e-5 = 8e-4 + 8e-5 = 8.8e-4 m = 0.88 mm. So make background rectangle width = 0.78 m? No — that’s 7.8e-4 m. Example:
+	•	Right‑click Geometry → Rectangle, set Width = 7.8e-4, Height = 8.8e-4, position at x=0, y=0 to align with array. Build.
+	6.	Subtract pore array from matrix to create holes (if pores are voids where species diffuses, you want pores to be holes; if diffusion happens inside pores then model species domain as the pore regions themselves — clarify which domain is the fluid where diffusion occurs). Most porous microstructure problems treat pores as fluid voids where transport occurs, and the surrounding matrix is solid impermeable. So we will keep pore domains as the fluid region. Do this:
+	•	If your pores are holes in the solid: Use Boolean Difference: Object to keep = Array rectangle (matrix); Objects to remove = pore array → you get a solid with holes — but transport domain is the holes. COMSOL expects you to define physics on domains; pick the domain(s) for transport accordingly (the pore domains).
+	•	Easiest approach: After array creation you will have many domains (each pore domain). Use Form Union to combine domains if needed; then Delete / keep appropriate bodies. (If unsure, visually select domains and check Domain numbers in the Graphics toolbar.)
+
+Important: Decide whether you model transport inside pores only (classic porous array) or in the solid matrix. I assume transport inside pores (species in pore fluid). In that case:
+	•	Use the union of all pore domains as the physical domain for the Transport interface.
+	•	The external bounding rectangle can be left as a solid block for display or used to define outer boundaries if needed.
+
+⸻
+
+2. Physics setup — Transport of Diluted Species
+	1.	In Model Builder → Transport of Diluted Species (tds) node:
+	•	Assign the physics to the pore domains (select the pore subdomains only). (Click Domains and tick them.)
+	•	Diffusion coefficient D = 1e-5 [m^2/s]. (Enter exactly with units.)
+	•	Source term R = 0 (default).
+	2.	Initial Values:
+	•	Click Initial Values subnode and set Concentration = c0*exp(-a*(x/0.0004)^2).
+	•	Explanation: the formula in the problem uses (x/0.4)^2 — if the 0.4 was in mm you must convert to meters: 0.4 mm = 0.0004 m, so write exp(-a*(x/0.0004)^2).
+	•	So in the initial concentration field type:
+
+3*exp(-1000*(x/0.0004)^2)
+and set units mol/m^3.
+
+	•	Note: x is the coordinate variable in COMSOL (in meters). If you want the initial condition to depend on both x and y, modify accordingly.
+
+	3.	Boundary Conditions
+	•	Left vertical edge (x = 0): Dirichlet concentration c = c0 = 3 [mol/m^3].
+	•	Add Concentration boundary condition → select leftmost boundary edges (outer matrix boundary at x = 0). Type 3.
+	•	Right vertical edge (x = xmax): Robin (flux) condition: (-D \nabla c)\cdot n = k_m (c - c_1) with k_m = 5, c_1=0. COMSOL has built‑in Flux BC:
+	•	Add Flux boundary condition: set Flux (normal flux) = km*(c - c1). In units use mol/(m^2*s)? COMSOL will keep track; enter 5*(c - 0). (It’s important that c is concentration variable in the physics — COMSOL accepts c as variable.)
+	•	If COMSOL separates outward flux sign, enter positive 5*(c-0) for flux out — but we want outward flux equal to km(c-c1). COMSOL convention: boundary condition “Flux” uses -D grad(c)·n = Ns if you enter flux. Typically set Flux = km*(c - c1). If results look inverted try negative sign.
+	•	All other boundaries: No Flux / Insulation. Use No Flux boundary (default) or explicitly add No Flux BC.
+	•	Pore surfaces inside the matrix: If pores touch matrix interior (pore walls) and you want no exchange across the solid walls, set No Flux on those interior walls too. If you want surface reactions or wall flux, model that as boundary flux on the pore surface.
+	4.	Notes on units: enter D with units m^2/s, km with m/s, c in mol/m^3.
+
+⸻
+
+3. Mesh
+	•	Right‑click Mesh → choose Free Triangular.
+	•	Because geometry has many small features (pore openings and arcs) use Finer or Custom:
+	•	Add Size → small maximum element size on the pore boundaries (say max element size = 0.00002 m i.e. 20 μm) to resolve the small arcs.
+	•	For the bulk domain use coarser size to keep total DOFs manageable.
+	•	Build mesh. Check element quality and refine if gradients are sharp.
+
+⸻
+
+4. Study & Solver settings
+	•	The Study type is Time Dependent (setup from Model Wizard). Double‑click Study → Step 1: Time Dependent.
+	•	Time stepping: set Times = range(0,0.5,20) or 0:0.5:20 (outputs every 0.5 s) or simply 0:1:20 (every 1 s). The problem asks visualize at t = 15 s and compute at t = 20 s, so 0:1:20 is fine.
+	•	Solver settings: default BDF time integrator is OK. If nonlinear or stiff, reduce dt.
+	•	Compute.
+
+⸻
+
+5. Results — visualize & extract requested quantities
+
+(d) Visualize surface concentrations and streamlines at t = 15 s:
+	•	In Results the default dataset will be Solution 1 (t = ...) — pick the dataset for t = 15 s (use the Time Selection drop‑down).
+	•	2D Plot Group → Surface: plot variable c (concentration). Add color legend and adjust range.
+	•	Streamlines: add Streamline (in Transport interface results) to show flux lines (use the species flux vector: -D*nx? — COMSOL provides built‑in variable for the flux, or use tds.nflux etc). In Transport of Diluted Species the flux vector is -D*grad(c). In the streamline settings choose vector field -D*{d(c,x), d(c,y)} or use built-in flux variable (check COMSOL variable list: something like tds.flux).
+
+Point evaluations at t = 20 s (A,B,C):
+	•	Compute c at points:
+	•	A: (0.1 mm, 0.4 mm) → (1e-4, 4e-4) m
+	•	B: (0.5 mm, 0.6 mm) → (5e-4, 6e-4) m
+	•	C: (0.7 mm, 0.3 mm) → (7e-4, 3e-4) m
+	•	Use Derived Values → Point Evaluation:
+	•	Add a Point Evaluation for coordinate x,y and pick dataset t = 20 s. Evaluate c.
+	•	Alternatively use Probes → Point Probe at those coordinates and plot time series (gives c(t) and you can read value at t=20 s).
+
+Line profiles along vertical lines x = 0.1 mm, 0.2 mm, 0.7 mm, 0.8 mm:
+	•	Derived Values → Line Evaluation:
+	•	For x = 0.1 mm: Start = (1e-4, 0), End = (1e-4, height e.g. 8.8e-4), number of points 200. Evaluate c.
+	•	Repeat for x = 0.2 mm, 0.7 mm, 0.8 mm.
+	•	Plot or export data (CSV).
+
+⸻
+
+6. Exporting results & checks
+	•	Export → Data to export point values, line data or surface all as CSV.
+	•	Export → Image save contour/streamline images as PNG or vector PDF.
+
+Sanity checks
+	•	With left BC c=c0 and right BC Robin with c1=0 you should observe concentration gradient from left to right, decreasing over time if initial is peaked at center.
+	•	If results are opposite sign or negative concentrations appear, check sign of flux BC (try -km*(c-c1) if needed), and ensure diffusion coefficient is positive.
+	•	If solution oscillates in time or diverges, refine time steps and mesh.
+
+⸻
+
+Implementation tips & troubleshooting
+	•	Which domains are physics applied to? If you intended species to occupy the pores only, make sure the Transport physics is assigned only to pore domains. If you intended diffusion through the entire matrix except walls, assign accordingly.
+	•	Robin boundary implementation: COMSOL’s “Flux” BC expects a flux expression — set it exactly 5*(c - 0) (units will become mol/(m^2*s) if c is mol/m^3 and km is m/s).
+	•	Units consistency: when typing 1e-5 for D explicitly include [m^2/s] while entering if you aren’t using SI by default, but since we use meters, you may just type 1e-5.
+	•	Large array models (72 small pores) can produce many DOFs. If the solve is slow, coarsen the mesh in regions away from pore walls and refine only around boundaries of pore.
+	•	If pores intersect or overlap due to array spacing, check pattern spacing and pore size to avoid geometry errors.
+
+ 
