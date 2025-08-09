@@ -1,0 +1,164 @@
+I can’t build and send you a .mph file from here, but I can give you a complete, exact recipe you can follow in COMSOL to produce the model in under 10–15 minutes — or copy/paste if you have LiveLink/COMSOL Java. Below I give:
+	1.	A short checklist (quick copy‑paste) so you can reproduce the model quickly in the GUI.
+	2.	A detailed step‑by‑step with the exact values, menu names and what to click.
+	3.	An optional note about a MATLAB/LiveLink or Java (COMSOL API) automation option I can provide if you want to auto‑generate the .mph.
+
+Pick whichever you prefer. If you want, after you run the steps you can tell me any error messages or screenshots and I’ll debug.
+
+⸻
+
+1) Quick checklist (copy this into a note and follow it in COMSOL)
+	•	Model Wizard → 2D (cartesian) ← recommended (left side is not axis)
+	•	Geometry: Rectangle width = 0.08 m, height = 0.14 m. Add Points on left edge at (0, 0.04) and (0, 0.10) and Build/Partition so left boundary splits into three segments.
+	•	Materials: rho = 7850[kg/m^3], Cp = 460[J/(kg*K)], k = 52[W/(m*K)].
+	•	Physics: Heat Transfer in Solids (ht). Domain Q = 0 (default).
+	•	BC: Top/Right/Bottom → Temperature 273.15[K]. Left boundary segments top & bottom → Thermal Insulation. Middle left segment between z=0.04 and 0.10 → Heat Flux q0 = 5e5[W/m^2] (if sign is wrong, use -5e5).
+	•	Initial value: 293.15[K].
+	•	Mesh: Physics controlled → Finer. Add a Size feature on the left patch with Maximum element size = 0.003 m. Build mesh.
+	•	Study: 1) Stationary → Compute. 2) Time Dependent, Time range 0:1:60 → Compute.
+	•	Results: Surface & Contour plots; Derived Values → Point Evaluation at A,B,C; 1D Plot Group → Line Graph for required lines; export CSV if needed.
+
+If you want the axisymmetric model instead, do Model Wizard → 2D Axisymmetric and use r‑coordinate as left→right; the BC splitting procedure is the same.
+
+⸻
+
+2) Detailed step‑by‑step GUI instructions (exact clicks & values)
+
+A. Start new model
+	1.	Launch COMSOL Multiphysics.
+	2.	Model Wizard:
+	•	Step 1: Select 2D (choose 2D not axisymmetric unless you are sure this is axisymmetric). Click Next.
+	•	Step 2: From Physics > Heat Transfer, choose Heat Transfer in Solids (ht). Click Add then Study: select Stationary. Click Finish.
+
+Why 2D: The figure shows a planar cross section; the left face has a flux patch — 2D Cartesian is the simplest and avoids axis confusion.
+
+⸻
+
+B. Geometry (create rectangle and split left boundary)
+	1.	In Model Builder click Geometry 1.
+	2.	Set Unit = m.
+	3.	Right‑click Geometry 1 → Rectangle:
+	•	Width: 0.08
+	•	Height: 0.14
+	•	Position x = 0, y = 0
+	•	Click Build Selected.
+	4.	Now we need to split the left boundary at z=0.04 and z=0.10:
+	•	Right‑click Geometry 1 → Points → Point (or from the toolbar choose Point).
+	•	Create point at (x=0, y=0.04) → Add.
+	•	Create point at (x=0, y=0.10) → Add.
+	•	Select both points (you may need to hit Build Selected after creating them).
+	•	Now right‑click Geometry 1 → Form Union or Partition Objects / Boolean and choose to Build All. COMSOL will create boundary fragments where the points lie, splitting the left boundary into three boundary edges: bottom (0→0.04), middle (0.04→0.10), top (0.10→0.14).
+	•	If partitioning is unclear in your COMSOL version: alternative method — create three rectangles stacked and combine with Union: rectangle1 (0→0.14), then rectangle2 etc. but the point split is easiest.
+	5.	Build All.
+
+Check in the Graphics window: left boundary should now show 3 selectable edges.
+
+⸻
+
+C. Material properties
+	1.	Right‑click Materials → Add Material → Blank Material.
+	2.	Under the material node set the following (enter units explicitly):
+	•	Density: 7850[kg/m^3]
+	•	Specific heat capacity: 460[J/(kg*K)]
+	•	Thermal conductivity: 52[W/(m*K)]
+	3.	Make sure the material is assigned to the domain (Domain 1).
+
+⸻
+
+D. Physics: Heat Transfer in Solids
+	1.	In Model Builder, click Heat Transfer in Solids (ht).
+	2.	Under Heat Transfer → Domains → Domain 1: check the volumetric heat source Q. It should be 0[W/m^3] (default).
+	3.	Initial Values (in physics node) — set Temperature to 293.15[K].
+
+⸻
+
+E. Boundary Conditions (exact menu items & values)
+
+1. Top, bottom, right as Dirichlet T = 273.15 K
+	•	In Heat Transfer (ht): right‑click Heat Transfer in Solids → Temperature.
+	•	In the Graphics select the Top, Right, and Bottom edges (hold Ctrl to multi‑select).
+	•	In the settings window Temperature enter 273.15[K]. Click Apply.
+
+2. Left boundary segments
+	•	Select the left edge top segment (z>0.10) and the left edge bottom segment (z<0.04): set them to Thermal Insulation.
+	•	In Heat Transfer add Thermal Insulation and select those two edges (or use default Thermal Insulation (no condition)).
+	•	Select the middle left segment (z from 0.04 to 0.10):
+	•	Right‑click Heat Transfer → Heat Flux.
+	•	In the settings for the selected boundary Heat Flux: set Heat flux (q0) = 5e5[W/m^2].
+	•	Important sign note: If after solving you see the solution cooler near the flux, set q0 = -5e5[W/m^2] — COMSOL sometimes interprets q0 as outward flux so outward positive means negative into domain. If uncertain run stationary and check direction: temperatures should go up near the band.
+	•	Click Apply.
+
+⸻
+
+F. Mesh (recommended settings)
+	1.	Right‑click Mesh 1 → Free Triangular → Size.
+	2.	Choose Finer or User controlled and:
+	•	Add a Size node (Right‑click Mesh 1 → Size → Boundary selection).
+	•	Select the middle left boundary (the flux patch) and set Maximum element size = 0.003, Minimum element size = 5e-5 (or keep default), Curvature factor default. This concentrates elements near the flux.
+	3.	Click Build All.
+
+⸻
+
+G. Studies and Solving
+
+1. Stationary
+	•	In Study 1 ensure Stationary is added. Click Compute.
+	•	Check the solution: Surface plot of T (Temperature). The highest T should be near the flux region.
+
+2. Time dependent (transient)
+	•	Right‑click Study → Add Study Step → Time Dependent. (Or create a new study: Study → Add Study → Time Dependent).
+	•	For the Time Dependent node click Study Settings → set Times to range(0,1,60) or simply 0:1:60 (gives steps every 1 s up to 60 s). If you want solver to pick steps use 0 60.
+	•	Initial value should be 293.15 K (or use stationary solution as initial if you want to start at steady). Typically use the given initial 293.15 K.
+	•	Click Compute. COMSOL will produce time‑series solution.
+
+⸻
+
+H. Probes / Derived Values (temperatures at A/B/C)
+
+Option A — Probes (live)
+	1.	Right‑click Results → Probes → Point Probe.
+	2.	Create a probe at coordinates:
+	•	A: x = 0.04, y = 0.04
+	•	B: x = 0.06, y = 0.07
+	•	C: x = 0.06, y = 0.10
+	3.	For transient study, the Probe plot will show T vs time. You can right‑click each Probe and Add to Plot Group.
+
+Option B — Derived Values (export final numbers)
+	1.	Under Results → Derived Values → Point Evaluation:
+	•	Add one Point Evaluation for coordinates above, evaluate T.
+	•	For transient study choose dataset for final time (use dataset Solution 1 (t = 60 s) or similar).
+	•	Click Evaluate to get numeric values, then click Export → save CSV.
+
+⸻
+
+I. Line plots (temperature profiles requested)
+
+Axial lines (z direction) at fixed r
+	•	Right‑click Results → More Derived Values → Line Evaluation (or create 1D Plot Group → Line Graph).
+	•	For a line at r = 0.05: set Start Point = (0.05, 0.0), End point = (0.05, 0.14), Number of points = 200. Evaluate T.
+	•	Repeat for r = 0.08, r = 0.10 — note if r=0.10 is outside domain (domain ends at 0.08) you cannot use it. Check problem text: maybe those were z-locations not r. If a requested line is outside domain adjust accordingly.
+
+Radial lines (r direction) at fixed z
+	•	Create Line Evaluation: Start = (0, z), End = (0.08, z). Use z = 0.03, 0.05, 0.07.
+
+Plot or export these lines.
+
+⸻
+
+J. Contours & Surface plots
+	•	In Results: add 2D Plot Group → Surface for surface render. Or Contour to get isotherms. Set number of levels, show color legend.
+	•	For transient you can pick the dataset for time step you want (e.g., t = 60 s). Also add animation for time evolution.
+
+⸻
+
+K. Exporting numeric results and plots
+	•	To export point/time series: Derived Values → Export → Data and choose CSV.
+	•	To export plot image: right‑click plot → Save Image → set resolution & file type.
+	•	To make a PDF report: File → Report and include selected results.
+
+⸻
+
+3) Sign / sanity checks
+	•	After stationary run: the steady temperature distribution should have T between 273.15 (edges) and a higher peak near the flux patch (but not extremely high if conduction carries heat away).
+	•	If results look inverted (cold at flux), change sign of heat flux in BC (use -5e5).
+	•	If transient is too stiff or slow, reduce time step size. For large flux strong gradients may require smaller time steps.
